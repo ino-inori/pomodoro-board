@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ポモドーロ・タスクボード</title>
+<style>
+  :root {
+    --bg: #faf6f1;
+    --card: #ffffff;
+    --text: #2b2520;
+    --muted: #8a7f76;
+    --line: #e8dfd6;
+    --accent: #e5533d;
+    --accent-soft: #fde9e5;
+    --break: #3d9a6b;
+    --break-soft: #e3f4ea;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1917;
+      --card: #292524;
+      --text: #f3ede7;
+      --muted: #a39990;
+      --line: #3f3a36;
+      --accent: #f2705c;
+      --accent-soft: #45251f;
+      --break: #5cc390;
+      --break-soft: #1f3a2c;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 32px 16px 48px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", "Yu Gothic UI", "Hiragino Sans", "Meiryo", sans-serif;
+    line-height: 1.5;
+  }
+  main { max-width: 520px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .date { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+
+  .timer {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 24px;
+    text-align: center;
+    margin-bottom: 20px;
+  }
+  .mode {
+    display: inline-block;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 4px 14px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+  .timer.break .mode { background: var(--break-soft); color: var(--break); }
+  .ring { position: relative; width: 220px; height: 220px; margin: 16px auto; }
+  .ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .ring circle { fill: none; stroke-width: 10; }
+  .ring .track { stroke: var(--line); }
+  .ring .progress { stroke: var(--accent); stroke-linecap: round; transition: stroke-dashoffset .3s linear; }
+  .timer.break .ring .progress { stroke: var(--break); }
+  .clock {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  .time { font-size: 52px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 1px; }
+  .focus { font-size: 13px; color: var(--muted); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  button {
+    font: inherit; color: inherit; cursor: pointer;
+    border: 1px solid var(--line); background: var(--card);
+    border-radius: 12px; padding: 10px 20px;
+  }
+  button:hover { border-color: var(--muted); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; min-width: 130px; }
+  .timer.break button.primary { background: var(--break); border-color: var(--break); }
+  .controls { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+
+  h2 { font-size: 15px; margin: 0 0 10px; display: flex; justify-content: space-between; align-items: baseline; }
+  h2 span { font-size: 12px; font-weight: 400; color: var(--muted); }
+  ul { list-style: none; margin: 0; padding: 0; }
+  .task {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--card);
+    border: 2px solid var(--line);
+    border-radius: 14px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    cursor: pointer;
+  }
+  .task.active { border-color: var(--accent); }
+  .task input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--accent); cursor: pointer; flex: none; }
+  .task .body { flex: 1; min-width: 0; }
+  .task .text { word-break: break-word; }
+  .task.done .text { text-decoration: line-through; color: var(--muted); }
+  .tomatoes { font-size: 15px; min-height: 22px; letter-spacing: 1px; color: var(--muted); }
+  .task .del { border: none; background: none; padding: 4px 8px; color: var(--muted); font-size: 18px; flex: none; }
+  .task .del:hover { color: var(--accent); }
+
+  form { display: flex; gap: 8px; }
+  form input {
+    flex: 1; min-width: 0; font: inherit; color: inherit;
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px;
+  }
+  form input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .hint { color: var(--muted); font-size: 13px; margin: 10px 2px 0; }
+  .footer { display: flex; justify-content: space-between; align-items: center; margin-top: 24px; color: var(--muted); font-size: 13px; }
+  .footer button { font-size: 13px; padding: 6px 12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>🍅 ポモドーロ・タスクボード</h1>
+  <div class="date" id="date"></div>
+
+  <section class="timer" id="timer">
+    <div class="mode" id="mode">集中</div>
+    <div class="ring">
+      <svg viewBox="0 0 120 120">
+        <circle class="track" cx="60" cy="60" r="54"></circle>
+        <circle class="progress" id="progress" cx="60" cy="60" r="54"></circle>
+      </svg>
+      <div class="clock">
+        <div class="time" id="time">25:00</div>
+        <div class="focus" id="focus"></div>
+      </div>
+    </div>
+    <div class="controls">
+      <button class="primary" id="toggle">スタート</button>
+      <button id="reset">リセット</button>
+      <button id="skip">スキップ</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>今日の3つ <span id="count"></span></h2>
+    <ul id="tasks"></ul>
+    <form id="form">
+      <input id="input" type="text" maxlength="60" placeholder="今日やることを書く" autocomplete="off">
+      <button type="submit" id="add">追加</button>
+    </form>
+    <p class="hint" id="hint"></p>
+  </section>
+
+  <div class="footer">
+    <span id="total"></span>
+    <button id="clear">すべてクリア</button>
+  </div>
+</main>
+
+<script>
+(function () {
+  var WORK_MS = 25 * 60 * 1000;
+  var BREAK_MS = 5 * 60 * 1000;
+  var MAX_TASKS = 3;
+  var STORAGE_KEY = 'pomodoro-board-v1';
+  var CIRCUMFERENCE = 2 * Math.PI * 54;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var els = {
+    timer: $('timer'), mode: $('mode'), time: $('time'), focus: $('focus'),
+    progress: $('progress'), toggle: $('toggle'), reset: $('reset'), skip: $('skip'),
+    tasks: $('tasks'), form: $('form'), input: $('input'), add: $('add'),
+    hint: $('hint'), count: $('count'), total: $('total'), clear: $('clear'), date: $('date')
+  };
+
+  var state = load();
+  var timer = { mode: 'work', remaining: WORK_MS, running: false, endAt: 0 };
+  var audioCtx = null;
+
+  function load() {
+    try {
+      var saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      if (saved && Array.isArray(saved.tasks)) return saved;
+    } catch (e) {}
+    return { tasks: [], activeId: null };
+  }
+
+  function save() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+
+  function activeTask() {
+    return state.tasks.find(function (t) { return t.id === state.activeId; }) || null;
+  }
+
+  function duration() { return timer.mode === 'work' ? WORK_MS : BREAK_MS; }
+
+  function format(ms) {
+    var s = Math.ceil(ms / 1000);
+    var m = Math.floor(s / 60);
+    s = s % 60;
+    return (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+  }
+
+  function renderTimer() {
+    var text = format(timer.remaining);
+    var task = activeTask();
+    els.timer.classList.toggle('break', timer.mode === 'break');
+    els.mode.textContent = timer.mode === 'work' ? '集中' : '休憩';
+    els.time.textContent = text;
+    els.focus.textContent = timer.mode === 'break' ? 'ひと休み' : (task ? task.text : 'タスクを選んでください');
+    els.progress.style.strokeDasharray = CIRCUMFERENCE;
+    els.progress.style.strokeDashoffset = CIRCUMFERENCE * (1 - timer.remaining / duration());
+    els.toggle.textContent = timer.running ? '一時停止' : (timer.remaining < duration() ? '再開' : 'スタート');
+    document.title = (timer.running ? text + ' ' : '') + 'ポモドーロ・タスクボード';
+  }
+
+  function renderTasks() {
+    els.tasks.textContent = '';
+    state.tasks.forEach(function (task) {
+      var li = document.createElement('li');
+      li.className = 'task' + (task.id === state.activeId ? ' active' : '') + (task.done ? ' done' : '');
+      li.addEventListener('click', function () {
+        state.activeId = task.id;
+        save(); renderTasks(); renderTimer();
+      });
+
+      var check = document.createElement('input');
+      check.type = 'checkbox';
+      check.checked = task.done;
+      check.title = '完了にする';
+      check.addEventListener('click', function (e) { e.stopPropagation(); });
+      check.addEventListener('change', function () {
+        task.done = check.checked;
+        save(); renderTasks();
+      });
+
+      var body = document.createElement('div');
+      body.className = 'body';
+      var text = document.createElement('div');
+      text.className = 'text';
+      text.textContent = task.text;
+      var tomatoes = document.createElement('div');
+      tomatoes.className = 'tomatoes';
+      tomatoes.textContent = task.tomatoes > 0 ? '🍅'.repeat(task.tomatoes) : '・';
+      body.appendChild(text);
+      body.appendChild(tomatoes);
+
+      var del = document.createElement('button');
+      del.className = 'del';
+      del.textContent = '×';
+      del.title = '削除';
+      del.addEventListener('click', function (e) {
+        e.stopPropagation();
+        state.tasks = state.tasks.filter(function (t) { return t.id !== task.id; });
+        if (state.activeId === task.id) state.activeId = state.tasks.length ? state.tasks[0].id : null;
+        save(); renderTasks(); renderTimer();
+      });
+
+      li.appendChild(check);
+      li.appendChild(body);
+      li.appendChild(del);
+      els.tasks.appendChild(li);
+    });
+
+    var full = state.tasks.length >= MAX_TASKS;
+    els.input.disabled = full;
+    els.add.disabled = full;
+    els.input.placeholder = full ? '3つで十分。まずはこれを終わらせましょう' : '今日やることを書く';
+    els.count.textContent = state.tasks.length + ' / ' + MAX_TASKS;
+    els.hint.textContent = state.tasks.length === 0
+      ? 'まずは今日いちばん大事なことを1つ。'
+      : 'タスクをクリックすると、次のポモドーロの対象になります。';
+    var total = state.tasks.reduce(function (sum, t) { return sum + t.tomatoes; }, 0);
+    els.total.textContent = '合計 ' + total + ' ポモドーロ(約 ' + total * 25 + ' 分)';
+  }
+
+  function chime() {
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      [660, 880, 1100].forEach(function (freq, i) {
+        var osc = audioCtx.createOscillator();
+        var gain = audioCtx.createGain();
+        var at = audioCtx.currentTime + i * 0.22;
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.0001, at);
+        gain.gain.exponentialRampToValueAtTime(0.25, at + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.5);
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.start(at); osc.stop(at + 0.5);
+      });
+    } catch (e) {}
+  }
+
+  function switchMode(mode) {
+    timer.mode = mode;
+    timer.remaining = duration();
+    timer.running = false;
+  }
+
+  function finish() {
+    chime();
+    if (timer.mode === 'work') {
+      var task = activeTask();
+      if (task) { task.tomatoes += 1; save(); renderTasks(); }
+      switchMode('break');
+    } else {
+      switchMode('work');
+    }
+    renderTimer();
+  }
+
+  // 残り時間は終了時刻から計算する(バックグラウンドのタブでもずれないように)
+  function tick() {
+    if (!timer.running) return;
+    timer.remaining = Math.max(0, timer.endAt - Date.now());
+    if (timer.remaining === 0) finish(); else renderTimer();
+  }
+
+  els.toggle.addEventListener('click', function () {
+    if (timer.running) {
+      timer.remaining = Math.max(0, timer.endAt - Date.now());
+      timer.running = false;
+    } else {
+      // 音はユーザー操作のあとでないと鳴らせないので、ここで準備しておく
+      try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+      timer.endAt = Date.now() + timer.remaining;
+      timer.running = true;
+    }
+    renderTimer();
+  });
+
+  els.reset.addEventListener('click', function () {
+    switchMode(timer.mode);
+    renderTimer();
+  });
+
+  els.skip.addEventListener('click', function () {
+    switchMode(timer.mode === 'work' ? 'break' : 'work');
+    renderTimer();
+  });
+
+  els.form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var text = els.input.value.trim();
+    if (!text || state.tasks.length >= MAX_TASKS) return;
+    var task = { id: Date.now().toString(36), text: text, tomatoes: 0, done: false };
+    state.tasks.push(task);
+    if (!activeTask()) state.activeId = task.id;
+    els.input.value = '';
+    save(); renderTasks(); renderTimer();
+  });
+
+  els.clear.addEventListener('click', function () {
+    if (!state.tasks.length || !confirm('タスクとトマトをすべて消します。よろしいですか?')) return;
+    state = { tasks: [], activeId: null };
+    save(); renderTasks(); renderTimer();
+  });
+
+  els.date.textContent = new Date().toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+  renderTasks();
+  renderTimer();
+  setInterval(tick, 250);
+})();
+</script>
+</body>
+</html>
